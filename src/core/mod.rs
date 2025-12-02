@@ -81,6 +81,10 @@ impl Gate {
         Some(Self { mat, targets })
     }
 
+    pub fn qubits(&self) -> &[usize] {
+        &self.targets
+    }
+
     pub fn h(target: usize) -> Self {
         let x = C::from_f64(1.0 / (2.0 as f64).sqrt());
         Self::new(mat![[x, x], [x, -x]], vec![target]).unwrap()
@@ -91,20 +95,31 @@ impl Gate {
     }
 
     pub fn cx(control: usize, target: usize) -> Option<Self> {
-        Self::new(
-            mat![
-                [ONE, Z, Z, Z],
-                [Z, ONE, Z, Z],
-                [Z, Z, Z, ONE],
-                [Z, Z, ONE, Z],
-            ],
-            vec![target, control],
-        )
+        Self::cnx(vec![control], target)
+    }
+
+    pub fn cnx(controls: Vec<usize>, target: usize) -> Option<Self> {
+        Self::x(target).controlled(controls)
+    }
+
+    pub fn controlled(self, controls: Vec<usize>) -> Option<Gate> {
+        let n = self.targets.len() + controls.len();
+        let old_power = self.mat.ncols();
+        let power = (2 as u32).pow(n as u32) as usize;
+        let mut mat = Mat::identity(power, power);
+        for j in 0..old_power {
+            let new_j = power - old_power + j;
+            for i in 0..old_power {
+                let new_i = power - old_power + i;
+                mat[(new_i, new_j)] = self.mat[(i, j)];
+            }
+        }
+        Self::new(mat, self.targets.into_iter().chain(controls).collect())
     }
 
     pub fn turn_big(&self, n: usize) -> Mat<C> {
         let power = (2 as u32).pow(n as u32) as usize;
-        let mut mat = Mat::zeros(power, power); // Start with zeros, not identity
+        let mut mat = Mat::zeros(power, power);
 
         for row in 0..power {
             for col in 0..power {
@@ -135,7 +150,6 @@ impl Gate {
                     }
                 }
 
-                // Copy the gate element to the big matrix
                 mat[(row, col)] = self.mat[(small_row, small_col)];
             }
         }
@@ -189,6 +203,25 @@ impl Circuit {
         }
     }
 
+    pub fn cnx(&mut self, controls: Vec<usize>, target: usize) -> Result<(), ()> {
+        if target >= self.qubits || controls.iter().any(|control| control >= &self.qubits) {
+            Err(())
+        } else {
+            let g = Gate::cnx(controls, target).ok_or(())?;
+            self.gates.push(g);
+            Ok(())
+        }
+    }
+
+    pub fn add_gate(&mut self, g: Gate) -> Result<(), ()> {
+        if g.qubits().iter().any(|x| x >= &self.qubits) {
+            Err(())
+        } else {
+            self.gates.push(g);
+            Ok(())
+        }
+    }
+
     pub fn run(&self) -> Result<HashMap<String, C>, ()> {
         let mut current = self.get_vec(0).ok_or(())?;
         for gate in &self.gates {
@@ -209,6 +242,13 @@ pub fn display_result(res: &HashMap<String, C>) {
     let mut strs = res.keys().collect::<Vec<_>>();
     strs.sort();
     for s in strs {
-        println!("|{}⟩: {} + i{}", s, res[s].0, res[s].1);
+        println!(
+            "|{}⟩: {}{:.5} {} i{:.5}",
+            s,
+            if res[s].0 >= 0.0 { " " } else { "-" },
+            res[s].0.abs(),
+            if res[s].1 >= 0.0 { "+" } else { "-" },
+            res[s].1.abs()
+        );
     }
 }
