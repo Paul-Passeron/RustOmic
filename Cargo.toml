@@ -1,0 +1,8 @@
+[package]
+name = "rustomic"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+faer = "0.23.2"
+qd = "0.8.0"
