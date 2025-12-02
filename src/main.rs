@@ -17,6 +17,45 @@ pub struct Circuit {
     gates: Vec<Gate>,
 }
 
+pub fn norm(x: fx128) -> f64 {
+    (x.0 * x.0 + x.1 * x.1).sqrt()
+}
+
+pub fn is_identity(m: &Mat<C>) -> bool {
+    if m.ncols() != m.nrows() {
+        return false;
+    }
+    let n = m.ncols();
+    for j in 0..n {
+        for i in 0..n {
+            let val = m[(i, j)];
+            if i == j {
+                if norm(val - ONE) > 1E-5 {
+                    return false;
+                }
+            } else {
+                if norm(val) > 1E-5 {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+pub fn is_unit(mat: &Mat<C>) -> bool {
+    let adjoint = mat.clone();
+    let adjoint = adjoint.adjoint();
+    let det = mat.determinant();
+    if norm(det) < 1E-10 {
+        return false;
+    }
+    if !is_identity(&(mat.clone() * adjoint)) {
+        return false;
+    }
+    true
+}
+
 impl Gate {
     pub fn new(mat: Mat<C>, targets: Vec<usize>) -> Option<Self> {
         if mat.ncols() != mat.nrows() {
@@ -26,7 +65,9 @@ impl Gate {
         if mat.ncols() != power {
             return None;
         }
-
+        if !is_unit(&mat) {
+            return None;
+        }
         let mut ts = HashSet::new();
         for target in &targets {
             if !ts.insert(*target) {
